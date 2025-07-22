@@ -1,0 +1,1 @@
+API_KEY = "iJjTtzEhLHr1tWrn5TtWm7qxNmXt4VucN5gD3bXs"  # <-- Replace with your Cohere API key
