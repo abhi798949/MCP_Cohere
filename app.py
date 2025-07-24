@@ -1,3 +1,4 @@
+
 import streamlit as st
 import yaml
 from netmiko import ConnectHandler
@@ -25,6 +26,29 @@ devices_list = load_devices()
 device_options = [f"{d['name']} ({d['ip']})" for d in devices_list]
 devices_dict = {f"{d['name']} ({d['ip']})": d for d in devices_list}
 
+# File setup
+def list_files_in_directory(directory_path):
+    try:
+        # List all entries in the given directory
+        entries = os.listdir(directory_path)
+        
+        # Filter only files
+        files = [entry for entry in entries if os.path.isfile(os.path.join(directory_path, entry))]
+        
+        return files
+    except FileNotFoundError:
+        print(f"The directory '{directory_path}' does not exist.")
+        return []
+    except PermissionError:
+        print(f"Permission denied to access '{directory_path}'.")
+        return []
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+    
+# Example usage
+directory = r'C:\Users\lenovo\Desktop\Cohere\running_configs'
+file_options = list_files_in_directory(directory)
 st.title("Network Assistant (Cohere-Powered)")
 st.markdown("Enter a prompt like: 'audit R1', 'configure BGP on R2', 'remove OSPF from R3'")
 
@@ -32,7 +56,34 @@ st.markdown("Enter a prompt like: 'audit R1', 'configure BGP on R2', 'remove OSP
 selected_devices = st.multiselect("Select Devices", options=device_options)
 prompt = st.text_area("Enter your network request:", height=100)
 run = st.button("Run Configuration")
+run2 = st.button("Take Backup")
+run4 = st.button("Restore this file")
+available_config = st.multiselect("Select backup file",options=file_options)
 
+if run4 and selected_devices and available_config:
+    for device_label in selected_devices:
+        print(device_label)
+        device_info = devices_dict[device_label]
+        try:
+            conn_params = {
+                "device_type": device_info["device_type"],
+                "ip": device_info["ip"],
+                "username": device_info["username"],
+                "password": device_info["password"],
+                }
+            st.subheader(f"🔧 DEVICE: {device_label}")
+            with ConnectHandler(**conn_params) as conn:
+                conn.enable()
+
+            #  find the backup file
+                for file_label in available_config:
+                    abs = f"{RUNNING_CONFIG_FOLDER}/{file_label}"
+                    conn.send_config_from_file(abs)
+                    st.success("✅ File Uploaded.")
+
+        except Exception as e:
+            st.error(f"❌ Error on {device_label}: {str(e)}")
+       
 if run and selected_devices and prompt:
     with st.spinner(" Processing your request..."):
         response_text = get_action_from_prompt(prompt)
@@ -93,6 +144,33 @@ if run and selected_devices and prompt:
                         st.code(diff_output, language="diff")
                     else:
                         st.info("ℹ️ No changes detected.")
+            except Exception as e:
+                st.error(f"❌ Error on {device_label}: {str(e)}")       
 
+if run2 and selected_devices:
+    with st.spinner(" Processing your request..."):
+        for device_label in selected_devices:
+            device_info = devices_dict[device_label]
+            try:
+                conn_params = {
+                    "device_type": device_info["device_type"],
+                    "ip": device_info["ip"],
+                    "username": device_info["username"],
+                    "password": device_info["password"],
+                }
+
+                st.subheader(f"🔧 DEVICE: {device_label}")
+                with ConnectHandler(**conn_params) as conn:
+                    conn.enable()
+
+                    # Capture old config
+                    old_config = conn.send_command("show running-config")
+                    old_filename = f"{RUNNING_CONFIG_FOLDER}/Config_{device_info['name']}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+                    with open(old_filename, "w") as f:
+                        f.write(old_config)
+
+
+                    # Show differences
+                    st.markdown("🆚**Backup taken successfully**")
             except Exception as e:
                 st.error(f"❌ Error on {device_label}: {str(e)}")
